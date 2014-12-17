@@ -59,29 +59,37 @@
     [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
 }
 
-- (void)decrypt:(CDVInvokedUrlCommand*)command{
+- (BOOL)decrypt:(CDVInvokedUrlCommand*)command{
 
     //arguments passed from cordova
     NSString* dataString = [command.arguments objectAtIndex:0];
     NSString* privatekeyString = [command.arguments objectAtIndex:1];
     
     NSLog(@"Attempting to decrypt: %@", dataString);
+ //   NSLog(@"with the following private key: %@", privatekeyString);
 
     //load the private key
     const char *private_key = [privatekeyString UTF8String];
-    BIO *bio = BIO_new_mem_buf((void *)private_key, (int)strlen(private_key));
+    BIO *bio = BIO_new_mem_buf((void *)private_key, 10000);
     RSA *rsa_privatekey = PEM_read_bio_RSAPrivateKey(bio, NULL, NULL, NULL);
     BIO_free(bio);
+    
+    if(rsa_privatekey == NULL){
+        NSLog(@"Error with the private key");
+        return nil;
+    }
  
-    NSData *decodedData = [CDVCrypt base64DataFromString:dataString];
+    NSData *decodedData = [[NSData alloc] initWithBase64EncodedString:dataString options:0];
 
     int maxSize = RSA_size(rsa_privatekey);
-    char *decrypted = (unsigned char *)malloc(maxSize - 1);
+    char *decrypted = (unsigned char *)malloc(maxSize * [decodedData length]);
     char *err = NULL;
     if (RSA_private_decrypt([decodedData length], [decodedData bytes], decrypted, rsa_privatekey, RSA_PKCS1_PADDING) == -1) {
         ERR_load_CRYPTO_strings();
         fprintf(stderr, "Error %s\n", ERR_error_string(ERR_get_error(), err));
         fprintf(stderr, "Error %s\n", err);
+        NSLog(@"Hmm, there was an error decrypting");
+        return nil;
         
     }
     RSA_free(rsa_privatekey);
@@ -90,6 +98,8 @@
     
     CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:[NSString stringWithUTF8String:(char *)decrypted]];
     [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+    
+    return true;
 }
 
 // decode the base64 string
